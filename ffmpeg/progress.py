@@ -26,6 +26,7 @@ class Progress:
     time: timedelta
     bitrate: float
     speed: float
+    crop: tuple
 
 
 class Tracker:

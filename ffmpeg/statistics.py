@@ -11,7 +11,7 @@ from ffmpeg.utils import parse_time, parse_size
 
 # Reference: https://github.com/FFmpeg/FFmpeg/blob/release/6.1/fftools/ffmpeg.c#L496
 
-_pattern = re.compile(r"(frame|fps|size|time|bitrate|speed)\s*\=\s*(\S+)")
+_pattern = re.compile(r"(frame|fps|size|time|bitrate|speed|crop)\s*\=\s*(\S+)")
 
 _field_factory = {
     "frame": int,
@@ -20,6 +20,7 @@ _field_factory = {
     "time": parse_time,
     "bitrate": lambda item: float(item.replace("kbits/s", "")),
     "speed": lambda item: float(item.replace("x", "")),
+    "crop": lambda item: tuple(map(int, item.split(":")))
 }
 
 
@@ -31,11 +32,12 @@ class Statistics:
     time: timedelta = field(default_factory=timedelta)
     bitrate: float = 0.0
     speed: float = 0.0
+    crop: tuple = (0, 0, 0, 0)
 
     @classmethod
     def from_line(cls, line: str) -> Optional[Self]:
         statistics = {key: value for key, value in _pattern.findall(line)}
-        if len(statistics) < 4:
+        if len(statistics) < 4 and statistics.get("crop") is None:
             # When a media type is audio,FFmpeg reports the below statistics
             # - size, time, bitrate, speed
             # When a media type is video, FFmpeg reports the below statistics
