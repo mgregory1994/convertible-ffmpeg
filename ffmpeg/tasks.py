@@ -315,7 +315,7 @@ class FolderTask(_Task):
         self.is_no_subtitle: bool = False
         self.is_crop_detect: bool = False
 
-        self.populate_media_tasks()
+        TaskHelper.initialize_folder_media_tasks(self)
         self.media_folder.schedule_event_handler(self._event_handler)
 
     @property
@@ -346,7 +346,13 @@ class _MediaFolderEventHandler(FileSystemEventHandler):
 
             if not Path(file_path).is_dir():
                 task = TaskHelper.create_folder_media_task(file_path, self._folder_task)
+                if task is None:
+                    return
+
                 self._folder_task.media_folder.add_media_task(task)
+
+                if self._folder_task.is_started:
+                    self._folder_task.task_queue.put(task)
         except FFmpegError:
             pass
 
@@ -482,7 +488,7 @@ class OutputMediaFile(_MediaFile):
 class MediaFolder:
     def __init__(self, folder_path: str, recursive: bool = False) -> None:
         self._path = Path(os.fspath(folder_path)).resolve()
-        self._recursive = recursive
+        self._is_recursive = recursive
         self._list_lock: Lock = Lock()
         self._media_tasks: list[MediaTask] = []
         self._observer = observers.Observer()
@@ -492,8 +498,8 @@ class MediaFolder:
         return str(self._path)
 
     @property
-    def recursive(self) -> bool:
-        return self._recursive
+    def is_recursive(self) -> bool:
+        return self._is_recursive
 
     @property
     def media_tasks(self) -> list[MediaTask]:
@@ -525,46 +531,64 @@ class MediaFolder:
             pass
 
     def schedule_event_handler(self, event_handler: FileSystemEventHandler) -> None:
-        self.observer.schedule(event_handler, self.path, recursive=self.recursive)
+        self.observer.schedule(event_handler, self.path, recursive=self.is_recursive)
 
 
 class TaskHelper:
     @staticmethod
-    def create_folder_media_task(input_file: str, folder_task: FolderTask) -> MediaTask:
-        output_file = TaskHelper._get_media_task_output_file(input_file, folder_task)
-        task = MediaTask(input_file, output_file)
-        task.input_settings = folder_task.input_settings
-        task.general_settings = folder_task.general_settings
-        video_stream = task.get_video_stream(0)
-        video_filters = folder_task.video_filters.copy()
-        audio_stream = task.get_audio_stream(0)
-        subtitle_stream = task.get_subtitle_stream(0)
+    def initialize_folder_media_tasks(folder_task: FolderTask) -> None:
+        folder_path = folder_task.media_folder.path
+        for root, folders, file_names in os.walk(folder_path):
+            for name in file_names:
+                file_path = os.path.join(root, name)
+                task = TaskHelper.create_folder_media_task(file_path, folder_task)
+                if task is None:
+                    continue
 
-        if folder_task.is_crop_detect:
-            video_filters["crop"] = FFmpegHelper.get_crop_detect(task)
+                folder_task.media_folder.add_media_task(task)
 
-        if video_stream and folder_task.is_no_video:
-            task.remove_video_settings(video_stream, 0)
-        elif video_stream:
-            task.set_video_settings(
-                video_stream, 0, folder_task.video_settings, video_filters
-            )
+            if not folder_task.media_folder.is_recursive:
+                break
 
-        if audio_stream and folder_task.is_no_audio:
-            task.remove_audio_settings(audio_stream, 0)
-        elif audio_stream:
-            task.set_audio_settings(
-                audio_stream, 0, folder_task.audio_settings, folder_task.audio_filters
-            )
+    @staticmethod
+    def create_folder_media_task(input_file: str, folder_task: FolderTask) -> MediaTask | None:
+        try:
+            output_file = TaskHelper._get_media_task_output_file(input_file, folder_task)
+            task = MediaTask(input_file, output_file)
+            task.input_settings = folder_task.input_settings
+            task.general_settings = folder_task.general_settings
+            video_stream = task.get_video_stream(0)
+            video_filters = folder_task.video_filters.copy()
+            audio_stream = task.get_audio_stream(0)
+            subtitle_stream = task.get_subtitle_stream(0)
 
-        if subtitle_stream and folder_task.is_no_subtitle:
-            task.remove_subtitle_settings(subtitle_stream, 0)
-        elif subtitle_stream:
-            task.set_subtitle_settings(
-                subtitle_stream, 0, folder_task.subtitle_settings
-            )
+            if folder_task.is_crop_detect:
+                video_filters["crop"] = FFmpegHelper.get_crop_detect(task)
 
-        return task
+            if video_stream and folder_task.is_no_video:
+                task.remove_video_settings(video_stream, 0)
+            elif video_stream:
+                task.set_video_settings(
+                    video_stream, 0, folder_task.video_settings, video_filters
+                )
+
+            if audio_stream and folder_task.is_no_audio:
+                task.remove_audio_settings(audio_stream, 0)
+            elif audio_stream:
+                task.set_audio_settings(
+                    audio_stream, 0, folder_task.audio_settings, folder_task.audio_filters
+                )
+
+            if subtitle_stream and folder_task.is_no_subtitle:
+                task.remove_subtitle_settings(subtitle_stream, 0)
+            elif subtitle_stream:
+                task.set_subtitle_settings(
+                    subtitle_stream, 0, folder_task.subtitle_settings
+                )
+
+            return task if task.input_file.is_video or task.input_file.is_audio else None
+        except FFmpegError:
+            return None
 
     @staticmethod
     def _get_media_task_output_file(input_file: str, folder_task: FolderTask) -> str:
