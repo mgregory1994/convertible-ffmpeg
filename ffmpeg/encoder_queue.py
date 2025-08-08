@@ -5,7 +5,8 @@ from threading import Lock, Thread
 from typing import Iterable
 from queue import Queue
 
-from ffmpeg import Progress, MediaTask, FolderTask, FFmpegHelper
+from ffmpeg import Progress, MediaTask, FolderTask
+from ffmpeg.tasks import FFmpegHelper
 
 
 class TaskQueue:
