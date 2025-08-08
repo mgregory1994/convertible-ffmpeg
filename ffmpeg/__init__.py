@@ -10,15 +10,12 @@ from .progress import Progress
 from .tasks import (
     MediaTask,
     FolderTask,
-    VideoStream,
-    AudioStream,
     VideoSettings,
     VideoFilters,
     AudioSettings,
     AudioFilters,
     SubtitleSettings,
-    FFmpegHelper
 )
 from .encoder_queue import TaskQueue, HwaQueue, WatchFolderQueue
 
-__version__ = "2.0.12"
+__version__ = "3.0.01"
