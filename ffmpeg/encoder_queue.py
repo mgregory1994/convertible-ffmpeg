@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock, Thread
+from typing import Iterable
 from queue import Queue
 
 from ffmpeg import Progress, MediaTask, FolderTask, FFmpegHelper
@@ -27,27 +28,23 @@ class TaskQueue:
             for _ in range(self._max_workers):
                 executor.submit(self._run_loop_instance)
 
+    def _get_task(self) -> Iterable[MediaTask | FolderTask | bool]:
+        yield self.task_queue.get()
+
     def _run_loop_instance(self):
-        while True:
-            task = None
+        for task in self._get_task():
+            if isinstance(task, bool):
+                break
 
-            try:
-                task = self.task_queue.get()
+            self._add_running_task(task)
 
-                if isinstance(task, bool):
-                    return
+            if isinstance(task, FolderTask):
+                self._execute_folder_task_ffmpeg(task)
+            else:
+                self._execute_task_ffmpeg(task)
 
-                self._add_running_task(task)
-
-                if isinstance(task, MediaTask):
-                    self._execute_task_ffmpeg(task)
-                elif isinstance(task, FolderTask):
-                    self._execute_folder_task_ffmpeg(task)
-                else:
-                    raise ValueError
-            finally:
-                self._remove_running_task(task)  # type: ignore
-                self.task_queue.task_done()
+            self._remove_running_task(task)
+            self.task_queue.task_done()
 
     @property
     def task_queue(self) -> Queue[MediaTask | FolderTask | bool]:
@@ -65,7 +62,7 @@ class TaskQueue:
         with self._task_lock:
             self._running_tasks.append(task)
 
-    def _remove_running_task(self, task: MediaTask) -> None:
+    def _remove_running_task(self, task: MediaTask | FolderTask) -> None:
         try:
             with self._task_lock:
                 self._running_tasks.remove(task)
@@ -106,13 +103,13 @@ class TaskQueue:
             self.task_queue.put(False)
 
     def _execute_task_ffmpeg(self, task: MediaTask) -> None:
-        ffmpeg = FFmpegHelper.generate_ffmpeg(task)
+        FFmpegHelper.initialize_ffmpeg(task)
 
-        @ffmpeg.on("progress")
+        @task.ffmpeg.on("progress")
         def _(progress: Progress):
             task.progress = progress
 
-        FFmpegHelper.start_ffmpeg(task, ffmpeg)
+        task.execute_ffmpeg()
 
     def _execute_folder_task_ffmpeg(self, folder_task: FolderTask) -> None:
         for task in folder_task.media_folder.media_tasks:
