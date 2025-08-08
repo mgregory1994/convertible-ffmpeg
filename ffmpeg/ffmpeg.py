@@ -205,6 +205,30 @@ class FFmpeg(EventEmitter):
 
         return futures[1].result()
 
+    def resume(self):
+        """Resumes the paused FFmpeg process.
+
+        Raises:
+            FFmpegError: If FFmpeg is not executed
+        """
+        if not self._executed:
+            raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
+
+        sigterm = signal.SIGCONT
+        self._process.send_signal(sigterm)
+
+    def pause(self):
+        """Pauses the running FFmpeg process.
+
+        Raises:
+            FFmpegError: If FFmpeg is not executed
+        """
+        if not self._executed:
+            raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
+
+        sigterm = signal.SIGSTOP
+        self._process.send_signal(sigterm)
+
     def terminate(self):
         """Gracefully terminate the running FFmpeg process.
 
