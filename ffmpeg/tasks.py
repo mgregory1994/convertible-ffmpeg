@@ -302,6 +302,8 @@ class FolderTask(_Task):
         super().__init__(output_file)
 
         self._media_folder: MediaFolder = MediaFolder(input_file, recursive=recursive)
+        self._task_lock: Lock = Lock()
+        self._media_tasks: list[MediaTask] = []
         self._task_queue: Queue[MediaTask] = Queue()
         self._event_handler: _MediaFolderEventHandler = _MediaFolderEventHandler(self)
         self._watch_folder: bool = watch_folder
@@ -315,12 +317,27 @@ class FolderTask(_Task):
         self.is_no_subtitle: bool = False
         self.is_crop_detect: bool = False
 
-        TaskHelper.initialize_folder_media_tasks(self)
         self.media_folder.schedule_event_handler(self._event_handler)
+
+    def initialize_media_tasks(self) -> None:
+        for input_file in self.media_folder.media_files:
+            task = TaskHelper.create_folder_media_task(input_file.path, self)
+
+            if task:
+                self.add_media_task(task)
+
+    def initialize_task_queue(self) -> None:
+        for task in self.media_tasks:
+            self.task_queue.put(task)
 
     @property
     def media_folder(self) -> MediaFolder:
         return self._media_folder
+
+    @property
+    def media_tasks(self) -> list[MediaTask]:
+        with self._task_lock:
+            return self._media_tasks.copy()
 
     @property
     def task_queue(self) -> Queue[MediaTask]:
@@ -330,8 +347,16 @@ class FolderTask(_Task):
     def watch_folder(self) -> bool:
         return self._watch_folder
 
-    def populate_media_tasks(self) -> None:
-        pass
+    def add_media_task(self, task: MediaTask) -> None:
+        with self._task_lock:
+            self._media_tasks.append(task)
+
+    def remove_media_task(self, task: MediaTask) -> None:
+        try:
+            with self._task_lock:
+                self._media_tasks.remove(task)
+        except ValueError:
+            pass
 
 
 class _MediaFolderEventHandler(FileSystemEventHandler):
@@ -345,23 +370,26 @@ class _MediaFolderEventHandler(FileSystemEventHandler):
             file_path = str(event.src_path)
 
             if not Path(file_path).is_dir():
-                task = TaskHelper.create_folder_media_task(file_path, self._folder_task)
-                if task is None:
-                    return
+                input_file = InputMediaFile(file_path)
 
-                self._folder_task.media_folder.add_media_task(task)
+                if input_file.is_video or input_file.is_audio:
+                    self._folder_task.media_folder.add_media_file(input_file)
 
                 if self._folder_task.is_started:
-                    self._folder_task.task_queue.put(task)
+                    task = TaskHelper.create_folder_media_task(input_file.path, self._folder_task)
+
+                    if task:
+                        self._folder_task.add_media_task(task)
+                        self._folder_task.task_queue.put(task)
         except FFmpegError:
             pass
 
     def on_deleted(self, event: DirDeletedEvent | FileDeletedEvent) -> None:
         path = str(event.src_path)
 
-        for task in self._folder_task.media_folder.media_tasks:
-            if path == task.input_file.path or path == task.input_file.directory:
-                self._folder_task.media_folder.remove_media_task(task)
+        for media_file in self._folder_task.media_folder.media_files:
+            if path == media_file.path or path == media_file.directory:
+                self._folder_task.media_folder.remove_media_file(media_file)
 
 
 class _MediaFile:
@@ -490,8 +518,22 @@ class MediaFolder:
         self._path = Path(os.fspath(folder_path)).resolve()
         self._is_recursive = recursive
         self._list_lock: Lock = Lock()
-        self._media_tasks: list[MediaTask] = []
+        self._media_files: list[InputMediaFile] = []
         self._observer = observers.Observer()
+
+        self._initialize_media_files()
+
+    def _initialize_media_files(self) -> None:
+        for root, folders, file_names in os.walk(self._path):
+            for name in file_names:
+                file_path = os.path.join(root, name)
+                input_file = InputMediaFile(file_path)
+
+                if input_file.is_video or input_file.is_audio:
+                    self.add_media_file(input_file)
+
+            if not self._is_recursive:
+                break
 
     @property
     def path(self) -> str:
@@ -502,9 +544,9 @@ class MediaFolder:
         return self._is_recursive
 
     @property
-    def media_tasks(self) -> list[MediaTask]:
+    def media_files(self) -> list[InputMediaFile]:
         with self._list_lock:
-            return self._media_tasks.copy()
+            return self._media_files.copy()
 
     @property
     def observer(self) -> BaseObserver:
@@ -514,19 +556,19 @@ class MediaFolder:
     def size(self) -> int:
         size = 0
 
-        for task in self.media_tasks:
-            size += task.input_file.size
+        for media_file in self.media_files:
+            size += media_file.size
 
         return size
 
-    def add_media_task(self, task: MediaTask) -> None:
+    def add_media_file(self, media_file: InputMediaFile) -> None:
         with self._list_lock:
-            self._media_tasks.append(task)
+            self._media_files.append(media_file)
 
-    def remove_media_task(self, task: MediaTask) -> None:
+    def remove_media_file(self, media_file: InputMediaFile) -> None:
         try:
             with self._list_lock:
-                self._media_tasks.remove(task)
+                self._media_files.remove(media_file)
         except ValueError:
             pass
 
@@ -535,21 +577,6 @@ class MediaFolder:
 
 
 class TaskHelper:
-    @staticmethod
-    def initialize_folder_media_tasks(folder_task: FolderTask) -> None:
-        folder_path = folder_task.media_folder.path
-        for root, folders, file_names in os.walk(folder_path):
-            for name in file_names:
-                file_path = os.path.join(root, name)
-                task = TaskHelper.create_folder_media_task(file_path, folder_task)
-                if task is None:
-                    continue
-
-                folder_task.media_folder.add_media_task(task)
-
-            if not folder_task.media_folder.is_recursive:
-                break
-
     @staticmethod
     def create_folder_media_task(input_file: str, folder_task: FolderTask) -> MediaTask | None:
         try:

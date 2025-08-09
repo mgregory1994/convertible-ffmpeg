@@ -6,7 +6,7 @@ from typing import Iterable
 from queue import Queue
 
 from ffmpeg import Progress, MediaTask, FolderTask
-from ffmpeg.tasks import FFmpegHelper
+from ffmpeg.tasks import FFmpegHelper, TaskHelper
 
 
 class TaskQueue:
@@ -113,8 +113,16 @@ class TaskQueue:
         task.execute_ffmpeg()
 
     def _execute_folder_task_ffmpeg(self, folder_task: FolderTask) -> None:
-        for task in folder_task.media_folder.media_tasks:
+        folder_task.is_started = True
+
+        for task in folder_task.media_tasks:
             self._execute_task_ffmpeg(task)
+
+            if task.is_error and not folder_task.is_error:
+                folder_task.is_error = True
+
+        folder_task.is_done = True
+        folder_task.media_folder.observer.stop()
 
 
 class HwaQueue(TaskQueue): ...
@@ -125,6 +133,9 @@ class WatchFolderQueue(TaskQueue):
         Thread(target=WatchFolderQueue._execute_watch_folder_task_ffmpeg, args=(folder_task,)).start()
 
     def _execute_watch_folder_task_ffmpeg(self, folder_task: FolderTask):
+        folder_task.is_started = True
+        folder_task.initialize_task_queue()
+
         while not folder_task.is_stopped:
             task = folder_task.task_queue.get()
             self._add_running_task(task)
@@ -135,4 +146,5 @@ class WatchFolderQueue(TaskQueue):
 
             self._remove_running_task(task)
 
+        folder_task.is_done = True
         folder_task.media_folder.observer.stop()
