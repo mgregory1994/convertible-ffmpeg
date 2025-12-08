@@ -3,9 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Optional
-
-from typing_extensions import Self
+from typing import Optional, Self
 
 from ffmpeg.utils import parse_time, parse_size
 

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import ClassVar, Optional
-
-from typing_extensions import Self
+from typing import ClassVar, Optional, Self
 
 
 class FFmpegError(Exception):

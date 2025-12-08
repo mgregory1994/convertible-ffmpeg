@@ -5,7 +5,7 @@ import io
 import os
 import signal
 import subprocess
-from typing import IO, Optional, Union
+from typing import IO, Optional, Union, Self
 
 from pyee import EventEmitter
 from typing_extensions import Self
