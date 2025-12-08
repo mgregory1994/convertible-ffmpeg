@@ -40,6 +40,9 @@ class Statistics:
             # - size, time, bitrate, speed
             # When a media type is video, FFmpeg reports the below statistics
             # - frame, fps, size, time, bitrate, speed
+            # When a media type is video and the 'cropdetect' video filter is
+            # processing, FFmpeg reports the below statistics
+            # - crop
             return None
 
         fields = {key: _field_factory[key](value) for key, value in statistics.items() if value != "N/A"}
