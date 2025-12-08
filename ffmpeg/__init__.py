@@ -8,4 +8,5 @@ from .errors import (
 from .ffmpeg import FFmpeg
 from .progress import Progress
 
-__version__ = "3.0.01"
+
+__version__ = "0.1.0-alpha"
