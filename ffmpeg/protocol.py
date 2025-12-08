@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Optional, Union
-
-from typing_extensions import Protocol, Self, overload
+from typing import Any, Callable, Optional, Union, Protocol, Self
 
 from ffmpeg import types
 
@@ -30,16 +28,9 @@ class FFmpegProtocol(Protocol):
         **kwargs: Optional[types.Option],
     ) -> Self: ...
 
-    @overload
     def execute(
         self,
         stream: Optional[types.Stream] = None,
-    ) -> bytes: ...
-
-    @overload
-    async def execute(
-        self,
-        stream: Optional[types.AsyncStream] = None,
     ) -> bytes: ...
 
     def terminate(self): ...
