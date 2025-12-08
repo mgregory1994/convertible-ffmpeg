@@ -8,7 +8,6 @@ import subprocess
 from typing import IO, Optional, Union, Self
 
 from pyee import EventEmitter
-from typing_extensions import Self
 
 from ffmpeg import types
 from ffmpeg.errors import FFmpegAlreadyExecuted, FFmpegError
@@ -31,6 +30,7 @@ class FFmpeg(EventEmitter):
 
         self._process: subprocess.Popen[bytes]
         self._executed: bool = False
+        self._paused: bool = False
         self._terminated: bool = False
 
         self._tracker = Tracker(self)  # type: ignore
@@ -204,30 +204,36 @@ class FFmpeg(EventEmitter):
             raise FFmpegError.create(message=futures[2].result(), arguments=self.arguments)
 
         return futures[1].result()
-
-    def resume(self):
-        """Resumes the paused FFmpeg process.
-
-        Raises:
-            FFmpegError: If FFmpeg is not executed
-        """
-        if not self._executed:
-            raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
-
-        sigterm = signal.SIGCONT
-        self._process.send_signal(sigterm)
-
+    
     def pause(self):
         """Pauses the running FFmpeg process.
-
+        
         Raises:
-            FFmpegError: If FFmpeg is not executed
+            FFmpegError: If FFmpeg is not executed or is already paused.
         """
         if not self._executed:
             raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
-
-        sigterm = signal.SIGSTOP
-        self._process.send_signal(sigterm)
+        
+        if self._paused:
+            raise FFmpegError("FFmpeg is already paused", arguments=self.arguments)
+        
+        self._paused = True
+        self._process.send_signal(signal.SIGSTOP)
+        
+    def resume(self):
+        """Resumes the paused FFmpeg process.
+        
+        Raises:
+            FFmpegError: If FFmpeg is not executed or is not paused.
+        """
+        if not self._executed:
+            raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
+        
+        if not self._paused:
+            raise FFmpegError("FFmpeg is not paused", arguments=self.arguments)
+        
+        self._paused = False
+        self._process.send_signal(signal.SIGCONT)
 
     def terminate(self):
         """Gracefully terminate the running FFmpeg process.
