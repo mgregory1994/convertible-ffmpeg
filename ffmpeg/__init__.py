@@ -10,3 +10,13 @@ from .progress import Progress
 
 
 __version__ = "0.1.0-alpha"
+
+__all__ = [
+    "FFmpeg",
+    "FFmpegAlreadyExecuted",
+    "FFmpegError",
+    "FFmpegFileNotFound",
+    "FFmpegInvalidCommand",
+    "FFmpegUnsupportedCodec",
+    "Progress",
+]
