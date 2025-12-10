@@ -21,6 +21,7 @@ def parse_time(time: str) -> timedelta:
         milliseconds=int(match.group(4)) * 10,
     )
 
+
 # https://github.com/FFmpeg/FFmpeg/blob/d38bf5e08e768722096723b5c8781cd2eb18d070/fftools/ffmpeg.c#L618C53-L618C56
 def parse_size(item: str) -> int:
     if "kB" in item:
@@ -29,6 +30,7 @@ def parse_size(item: str) -> int:
         return int(item.replace("KiB", "")) * 1024
     else:
         raise ValueError(f"Unknown size format: {item}")
+
 
 def is_windows() -> bool:
     return sys.platform == "win32"
@@ -48,7 +50,7 @@ def ensure_io(stream: types.Stream) -> IO[bytes]:
     if isinstance(stream, bytes):
         stream = io.BytesIO(stream)
 
-    return stream
+    return stream  # type: ignore
 
 
 def read_stream(stream: IO[bytes], size: int = -1) -> Iterable[bytes]:

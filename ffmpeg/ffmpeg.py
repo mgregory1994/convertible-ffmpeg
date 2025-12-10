@@ -9,11 +9,13 @@ from typing import IO, Optional, Union, Self
 
 from pyee import EventEmitter
 
-from ffmpeg import types
 from ffmpeg.errors import FFmpegAlreadyExecuted, FFmpegError
 from ffmpeg.options import Options
 from ffmpeg.progress import Tracker
 from ffmpeg.utils import create_subprocess, ensure_io, is_windows, read_stream, readlines
+
+if TYPE_CHECKING:
+    from ffmpeg import types
 
 
 class FFmpeg(EventEmitter):
@@ -40,7 +42,7 @@ class FFmpeg(EventEmitter):
         """Return a list of arguments to be used when executing FFmpeg.
 
         Returns:
-            A lit of arguments to be used when executing FFmpeg.
+            A list of arguments to be used when executing FFmpeg.
         """
         return [self._executable, *self._options.build()]
 
@@ -143,7 +145,7 @@ class FFmpeg(EventEmitter):
         self._options.output(url, options, **kwargs)
         return self
 
-    def execute(self, stream: Optional[Union[bytes, IO[bytes]]] = None, timeout: Optional[float] = None) -> bytes:
+    def execute(self, stream: Optional[types.Stream] = None, timeout: Optional[float] = None) -> bytes:
         """Execute FFmpeg using specified global options and files.
 
         Args:
@@ -179,12 +181,11 @@ class FFmpeg(EventEmitter):
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
             self._executed = True
-            futures = [
-                executor.submit(self._write_stdin, stream),
-                executor.submit(self._read_stdout),
-                executor.submit(self._handle_stderr),
-                executor.submit(self._process.wait, timeout),
-            ]
+            stdin_exec = executor.submit(self._write_stdin, stream)
+            stdout_exec = executor.submit(self._read_stdout)
+            stderr_exec = executor.submit(self._handle_stderr)
+            proc_exec = executor.submit(self._process.wait, timeout)
+            futures: list[concurrent.futures.Future[Any]] = [stdin_exec, stdout_exec, stderr_exec, proc_exec]
             done, pending = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_EXCEPTION)
             self._executed = False
 
@@ -201,37 +202,37 @@ class FFmpeg(EventEmitter):
         elif self._terminated:
             self.emit("terminated")
         else:
-            raise FFmpegError.create(message=futures[2].result(), arguments=self.arguments)
+            raise FFmpegError.create(message=stderr_exec.result(), arguments=self.arguments)
 
-        return futures[1].result()
-    
+        return stdout_exec.result()
+
     def pause(self):
         """Pauses the running FFmpeg process.
-        
+
         Raises:
             FFmpegError: If FFmpeg is not executed or is already paused.
         """
         if not self._executed:
             raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
-        
+
         if self._paused:
             raise FFmpegError("FFmpeg is already paused", arguments=self.arguments)
-        
+
         self._paused = True
         self._process.send_signal(signal.SIGSTOP)
-        
+
     def resume(self):
         """Resumes the paused FFmpeg process.
-        
+
         Raises:
             FFmpegError: If FFmpeg is not executed or is not paused.
         """
         if not self._executed:
             raise FFmpegError("FFmpeg is not executed", arguments=self.arguments)
-        
+
         if not self._paused:
             raise FFmpegError("FFmpeg is not paused", arguments=self.arguments)
-        
+
         self._paused = False
         self._process.send_signal(signal.SIGCONT)
 
