@@ -5,7 +5,7 @@ import io
 import os
 import signal
 import subprocess
-from typing import IO, Optional, Union, Self
+from typing import Any, IO, Optional, TYPE_CHECKING, Union, Self
 
 from pyee import EventEmitter
 
@@ -28,7 +28,7 @@ class FFmpeg(EventEmitter):
         super().__init__()
 
         self._executable: str = executable
-        self._options: Options = Options()
+        self._options: Options = Options.new_options()
 
         self._process: subprocess.Popen[bytes]
         self._executed: bool = False
@@ -45,6 +45,15 @@ class FFmpeg(EventEmitter):
             A list of arguments to be used when executing FFmpeg.
         """
         return [self._executable, *self._options.build()]
+
+    @property
+    def options(self) -> Options:
+        """Returns the options object containing the global, input file, and output file options.
+
+        Returns:
+            The options object containing the global, input file, and output file options.
+        """
+        return self._options
 
     def option(self, key: str, value: Optional[types.Option] = None) -> Self:
         """Add a global option `-key` or `-key value`.

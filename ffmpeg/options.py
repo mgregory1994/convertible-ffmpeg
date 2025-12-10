@@ -17,10 +17,14 @@ def _unpack_options(options: dict[str, Optional[types.Option]]) -> Iterable[Opti
             yield Option(key, value)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Option:
     key: str
     value: Optional[types.Option] = None
+
+    @property
+    def pair(self) -> dict[str, Optional[types.Option]]:
+        return {self.key: self.value}
 
     def build(self) -> Iterable[str]:
         yield f"-{self.key}"
@@ -29,14 +33,18 @@ class Option:
             yield str(self.value)
 
 
+@dataclass(frozen=True, slots=True)
 class Options:
-    def __init__(self):
-        self._global_options: list[Option] = []
-        self._input_files: list[InputFile] = []
-        self._output_files: list[OutputFile] = []
+    global_options: list[Option]
+    input_files: list[InputFile]
+    output_files: list[OutputFile]
+
+    @classmethod
+    def new_options(cls):
+        return cls([], [], [])
 
     def option(self, key: str, value: Optional[types.Option] = None):
-        self._global_options.append(Option(key, value))
+        self.global_options.append(Option(key, value))
 
     def input(
         self,
@@ -49,7 +57,7 @@ class Options:
         options = options if options is not None else {}
         options.update(kwargs)
 
-        self._input_files.append(InputFile(url, [*_unpack_options(options)]))
+        self.input_files.append(InputFile(url, [*_unpack_options(options)]))
 
     def output(
         self,
@@ -62,14 +70,14 @@ class Options:
         options = options if options is not None else {}
         options.update(kwargs)
 
-        self._output_files.append(OutputFile(url, [*_unpack_options(options)]))
+        self.output_files.append(OutputFile(url, [*_unpack_options(options)]))
 
     def build(self) -> Iterable[str]:
-        for option in self._global_options:
+        for option in self.global_options:
             yield from option.build()
 
-        for input_file in self._input_files:
+        for input_file in self.input_files:
             yield from input_file.build()
 
-        for output_file in self._output_files:
+        for output_file in self.output_files:
             yield from output_file.build()
